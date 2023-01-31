@@ -10,3 +10,5 @@ Ce projet sert à calculer des moyennes "Odin", pour l'utiliser il faut:
 -coller tout dans "src.txt" (cntrl + V)
 
 -enregistrer puis exécuter "main.py"
+
+Dernière mise à jour: 31/01/2023
