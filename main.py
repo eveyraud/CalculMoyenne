@@ -1,104 +1,166 @@
-from objet import BlocNote
+#C:\\cours\\CalculMoyenne-main\\src.txt
+from time import sleep
+import re
+import html  # Pour décoder les caractères HTML
 
-strSrc = ""
-with open("src.txt", "r", encoding="UTF-8") as fichierSrc:
-    for ligne in fichierSrc:
-        strSrc += ligne
+def extraire_notes_ue(contenu_html):
+    """
+    Extrait et calcule les moyennes des UEs à partir du contenu HTML
+    
+    Args:
+        contenu_html (str): Contenu HTML brut du fichier
+        
+    Returns:
+        tuple: (moyennes_ues, notes_sous_dix, matieres_importantes, moyenne_generale)
+    """
+    # Initialisation des structures de données
+    donnees_ues = {}  # Stockage des données par UE
+    notes_sous_dix = set()  # Set pour éviter les doublons des notes < 10
+    matieres_importantes = set()  # Set pour les matières avec coeff >= 5
+    ue_courante = None
+    somme_ponderee_totale = 0
+    total_coefficients = 0
+    
+    # Expressions régulières pour l'extraction des données
+    motif_ue = re.compile(
+        r'<td colspan="4" class="bleu">(.*?)</td>'
+    )
+    
+    motif_ressource = re.compile(
+        r'<td colspan="3" class="vert">(.*?)</td>.*?' +  # Nom ressource
+        r'<td class="text_align_center">([\d.]+)</td>.*?' +  # Coefficient
+        r'<td class="vert text_align_center">([\d.]*)</td>',  # Note
+        re.DOTALL
+    )
 
-def sepBloc(strSrc):
-    tabSrc = strSrc.split("<tr>")
-    for i in range(4):
-        del tabSrc[0]
-    del tabSrc[-1]
-    return tabSrc
+    def nettoyer_texte(texte):
+        """
+        Nettoie le texte en décodant les caractères HTML et en supprimant les espaces inutiles
+        
+        Args:
+            texte (str): Texte à nettoyer
+            
+        Returns:
+            str: Texte nettoyé
+        """
+        # Décode les entités HTML et supprime les espaces superflus
+        texte_nettoye = html.unescape(texte)
+        # Supprime les "UE RT X.X : " au début du texte si présent
+        texte_nettoye = re.sub(r'^UE RT \d+\.\d+ : ', '', texte_nettoye)
+        return texte_nettoye.strip()
 
-def sepUE(strSrc):
-    UE1 = []
-    UE2 = []
-    UE3 = []
-    UE4 = []
-    UE5 = []
-    UE = 1
-    for i in strSrc:
-        if "UE" in i:
-            UE += 1
-        else:
-            posNote = i.find('<td class="vert text_align_center">') + 35
-            note = i[posNote:i.find("<", posNote)]
-            if '<td colspan="3"' in i and note != "":
-                if UE == 1:
-                    UE1.append(BlocNote(i))
-                elif UE == 2:
-                    UE2.append(BlocNote(i))
-                elif UE == 3:
-                    UE3.append(BlocNote(i))
-                elif UE == 4:
-                    UE4.append(BlocNote(i))
-                elif UE == 5:
-                    UE5.append(BlocNote(i))
-    return {'UE1': UE1, 'UE2': UE2, 'UE3': UE3, 'UE4': UE4, 'UE5': UE5}
+    def calculer_moyenne_ue(donnees):
+        """
+        Calcule la moyenne pondérée d'une UE
+        
+        Args:
+            donnees (dict): Données de l'UE (coefficients et somme pondérée)
+            
+        Returns:
+            float/str: Moyenne calculée ou "Pas de notes"
+        """
+        if donnees['total_coefficients'] > 0:
+            moyenne = donnees['somme_ponderee'] / donnees['total_coefficients']
+            return round(moyenne, 2)
+        return "Pas de notes"
 
-def calculMoyenne(UE):
-    coeff = 0
-    notes = 0
-    for i in UE:
-        coeff += float(i.getCoeff())
-        notes += float(i.getNote()) * float(i.getCoeff())
-    return round(notes / coeff, 2)
+    # Divise le HTML en blocs d'UE
+    blocs_ue = re.split(r'<tr>\s*<td colspan="10"></td>\s*</tr>', contenu_html)
+    
+    # Traitement de chaque bloc d'UE
+    for bloc in blocs_ue:
+        correspondance_ue = motif_ue.search(bloc)
+        
+        if correspondance_ue:
+            # Extraction et nettoyage du nom de l'UE
+            ue_courante = nettoyer_texte(correspondance_ue.group(1))
+            donnees_ues[ue_courante] = {
+                'total_coefficients': 0,
+                'somme_ponderee': 0
+            }
+            
+            # Extraction des ressources de l'UE
+            ressources = motif_ressource.finditer(bloc)
+            
+            # Traitement de chaque ressource
+            for ressource in ressources:
+                nom_ressource = nettoyer_texte(ressource.group(1))
+                coefficient = float(ressource.group(2))
+                note_str = ressource.group(3).strip()
+                
+                if note_str:  # Si une note existe
+                    note = float(note_str)
+                    # Mise à jour des totaux pour l'UE
+                    donnees_ues[ue_courante]['total_coefficients'] += coefficient
+                    donnees_ues[ue_courante]['somme_ponderee'] += coefficient * note
+                    # Mise à jour des totaux généraux
+                    somme_ponderee_totale += coefficient * note
+                    total_coefficients += coefficient
 
-def calculMoyenneClass(UE):
-    coeff = 0
-    notes = 0
-    for i in UE:
-        coeff += float(i.getCoeff())
-        notes += float(i.getNoteClass()) * float(i.getCoeff())
-    return round(notes / coeff, 2)
+                    # Enregistrement des notes < 10
+                    if note < 10:
+                        notes_sous_dix.add((nom_ressource, note))
 
-# Calcul des moyennes
-UE1 = calculMoyenne(sepUE(sepBloc(strSrc))['UE1'])
-UE2 = calculMoyenne(sepUE(sepBloc(strSrc))['UE2'])
-UE3 = calculMoyenne(sepUE(sepBloc(strSrc))['UE3'])
-UE4 = calculMoyenne(sepUE(sepBloc(strSrc))['UE4'])
-UE5 = calculMoyenne(sepUE(sepBloc(strSrc))['UE5'])
+                    # Enregistrement des matières importantes
+                    if coefficient >= 5:
+                        matieres_importantes.add((nom_ressource, coefficient))
 
-UE1Class = calculMoyenneClass(sepUE(sepBloc(strSrc))['UE1'])
-UE2Class = calculMoyenneClass(sepUE(sepBloc(strSrc))['UE2'])
-UE3Class = calculMoyenneClass(sepUE(sepBloc(strSrc))['UE3'])
-UE4Class = calculMoyenneClass(sepUE(sepBloc(strSrc))['UE4'])
-UE5Class = calculMoyenneClass(sepUE(sepBloc(strSrc))['UE5'])
+    # Calcul des moyennes finales
+    moyennes_ues = {
+        ue: calculer_moyenne_ue(donnees)
+        for ue, donnees in donnees_ues.items()
+    }
 
-# Affichage des résultats
-print("")
-print("UE1: ", UE1, " (", UE1Class, ")", " /!\\ " if UE1 < UE1Class else "", sep="")
-print("UE2: ", UE2, " (", UE2Class, ")", " /!\\ " if UE2 < UE2Class else "", sep="")
-print("UE3: ", UE3, " (", UE3Class, ")", " /!\\ " if UE3 < UE3Class else "", sep="")
-print("UE4: ", UE4, " (", UE4Class, ")", " /!\\ " if UE4 < UE4Class else "", sep="")
-print("UE5: ", UE5, " (", UE5Class, ")", " /!\\ " if UE5 < UE5Class else "", sep="")
-print("")
-print('Moyenne générale: ', round((UE1 + UE2 + UE3 + UE4 + UE5) / 5, 2), " (", round((UE1Class + UE2Class + UE3Class + UE4Class + UE5Class) / 5, 2), ")", sep="")
+    # Calcul de la moyenne générale
+    moyenne_generale = round(somme_ponderee_totale / total_coefficients, 2) if total_coefficients > 0 else "Pas de notes"
+
+    return moyennes_ues, notes_sous_dix, matieres_importantes, moyenne_generale
+
+CheminValide = False
+fichier_src="src.txt"
+while not CheminValide:
+    try:
+        with open(fichier_src, 'r', encoding='utf-8') as fichier:
+            contenu_html = fichier.read()
+            CheminValide=True
+
+    except FileNotFoundError:
+        print("Erreur: Le fichier src.txt n'a pas été trouvé.")
+        fichier_src = input("Veuillez entrer le chemin absolu du fichier: ")
+
+    except Exception as e:
+        print(f"Erreur lors de la lecture du fichier: {e}")
+        fichier_src = input("Veuillez entrer le chemin absolu du fichier: ")
+
+try:
+    moyennes, notes_sous_dix, matieres_importantes, moyenne_generale = extraire_notes_ue(contenu_html)
+    # Affichage des notes sous 10
+    print("\nNotes en dessous de la moyenne:")
+    print("-" * 50)
+    for matiere, note in sorted(notes_sous_dix):
+        print(f"{matiere}: {note}")
 
 
-###############
-## Optionnel ##
-###############
+    # Affichage des matières importantes
 
-print("")
-print("--------------------------")
-print("")
-print("Matières en dessous de la moyenne :")
-print("")
-# Matières en dessous de la moyenne
-for x, y in sepUE(sepBloc(strSrc)).items():
-    for i in y:
-        if float(i.getNote()) < 10:
-            print(f"{x} : {i.getNom()} ({i.getNote()}) coeff: {i.getCoeff()}")
-print("")
+    print("\nMatières importantes (coefficient >= 5):")
+    print("-" * 50)
 
-print("Matières importantes :")
-print("")
-# Matières en dessous de la moyenne
-for x, y in sepUE(sepBloc(strSrc)).items():
-    for i in y:
-        if float(i.getCoeff()) >= 5:
-            print(f"{x} : {i.getNom()} ({i.getNote()}) coeff: {i.getCoeff()}")
-print("")
+    for matiere, coeff in sorted(matieres_importantes):
+            print(f"{matiere} (coefficient: {coeff})")
+
+    # Affichage des moyennes par UE
+    print("\nMoyennes par UE:")
+    print("-" * 50)
+    for ue, moyenne in moyennes.items():
+        print(f"{ue}: {moyenne}")
+
+        # Affichage de la moyenne générale
+    print("\nMoyenne générale:")
+    print("-" * 50)
+    print(f"Moyenne générale: {moyenne_generale}")
+    input()
+    input()
+
+except Exception as e:
+    print(f"Erreur lors du traitement des notes: {e}")
