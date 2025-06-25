@@ -11,4 +11,4 @@ Ce projet sert à calculer des moyennes "Odin", pour l'utiliser il faut:
 
 -enregistrer puis exécuter "main.py"
 
-Dernière mise à jour: 31/01/2023
+Dernière mise à jour: 25/06/2025
